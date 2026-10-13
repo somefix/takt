@@ -67,7 +67,6 @@ onUnmounted(() => undoController.dispose());
   <section class="history">
     <div class="section-title">
       <h2>История</h2>
-      <span>С понедельника · суммы включают параллельное время</span>
     </div>
     <div
       v-if="undo"

@@ -104,6 +104,10 @@ button {
   flex: 1;
   min-width: 120px;
 }
+.timer-actions {
+  display: flex;
+  gap: 6px;
+}
 .start-group {
   display: flex;
   flex: 1;

@@ -201,22 +201,43 @@ test('removing a record from sync window retains local history', async () => {
   assert.ok(!m.sync['record:r0']);
 });
 test('duration edit recalculates end, overnight manual input and invalid time rejected', async () => {
-  const { formTimes } = await import('../lib/model.ts');
+  const { formTimes, formatDurationMinutes } = await import('../lib/model.ts');
   const f = {
     date: '2026-10-05',
-    start: '23:30:00',
+    start: '23:30',
     endDate: '2026-10-06',
-    end: '01:00:00',
-    duration: '02:15:30',
+    end: '01:00',
+    duration: '02:15',
   };
   const end = formTimes(f, false, 'end', Date.now());
   assert.equal(end.end! - end.start, 5400000);
   const changed = formTimes(f, false, 'duration', Date.now());
-  assert.equal(changed.end! - changed.start, 8130000);
+  assert.equal(changed.end! - changed.start, 8100000);
   assert.equal(formTimes(f, true, 'end', Date.now()).end, null);
   assert.throws(() => formTimes({ ...f, endDate: f.date }, false, 'end'));
-  assert.throws(() => formTimes({ ...f, duration: '01:90:00' }, false, 'duration'));
+  assert.throws(() => formTimes({ ...f, duration: '01:90' }, false, 'duration'));
+  assert.throws(() => formTimes({ ...f, start: '23:30:17' }));
+  assert.throws(() => formTimes({ ...f, end: '01:00:17' }));
+  assert.throws(() => formTimes({ ...f, duration: '02:15:30' }, false, 'duration'));
   assert.throws(() => formTimes({ ...f, date: '2999-01-01' }, true));
+
+  const original = {
+    start: +new Date('2026-10-05T23:30:17'),
+    end: +new Date('2026-10-06T01:00:42'),
+  };
+  assert.equal(formatDurationMinutes(original.end - original.start), '01:30');
+  assert.deepEqual(
+    formTimes({ ...f, duration: '01:30' }, false, 'end', Date.now(), original),
+    original,
+  );
+  assert.deepEqual(
+    formTimes({ ...f, duration: '01:30' }, false, 'duration', Date.now(), original),
+    original,
+  );
+  assert.equal(
+    formTimes({ ...f, start: '23:31' }, false, 'end', Date.now(), original).end,
+    original.end,
+  );
 });
 test('undo expires after five seconds and a new deletion replaces its deadline', async () => {
   const { createUndo } = await import('../lib/undo.ts');

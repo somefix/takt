@@ -4,7 +4,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 
 import { errorMessage } from '../lib/types.ts';
-import { localDate, localTime, formatDuration, formTimes } from '../lib/model.ts';
+import { localDate, localTime, formatDurationMinutes, formTimes } from '../lib/model.ts';
 
 import type { TimeRecord, RecordFields, TimeMode } from '../lib/types.ts';
 
@@ -18,10 +18,10 @@ const end = r?.end ?? start + 3600000;
 const form = reactive({
   title: r?.title || '',
   date: localDate(start),
-  start: localTime(start),
+  start: localTime(start).slice(0, 5),
   endDate: localDate(end),
-  end: localTime(end),
-  duration: formatDuration(end - start),
+  end: localTime(end).slice(0, 5),
+  duration: formatDurationMinutes(end - start),
   billable: r?.billable ?? false,
 });
 
@@ -30,7 +30,7 @@ const error = ref('');
 
 function submit() {
   try {
-    const times = formTimes(form, props.active, mode.value);
+    const times = formTimes(form, props.active, mode.value, Date.now(), r);
 
     emit('save', { title: form.title.trim() || 'Без названия', ...times, billable: form.billable });
   } catch (e) {
@@ -66,7 +66,6 @@ function submit() {
         <input
           v-model="form.start"
           type="time"
-          step="1"
           required
         />
       </label>
@@ -105,13 +104,12 @@ function submit() {
           <input
             v-model="form.end"
             type="time"
-            step="1"
             required
           />
         </label>
       </div>
       <label v-else>
-        Длительность (ЧЧ:ММ:СС)
+        Длительность (ЧЧ:ММ)
         <InputText
           v-model="form.duration"
           required

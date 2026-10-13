@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { browser } from 'wxt/browser';
-import { ref, watch } from 'vue';
+import { computed, ref, watch, onUnmounted } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Dialog from 'primevue/dialog';
@@ -9,7 +9,8 @@ import { errorMessage } from '../lib/types.ts';
 import RecordForm from './RecordForm.vue';
 import History from './History.vue';
 import { useStore } from '../lib/store.ts';
-import { formatDuration, parseImport, exportJSON, exportCSV } from '../lib/model.ts';
+import { createUndo } from '../lib/undo.ts';
+import { duration, formatDuration, parseImport, exportJSON, exportCSV } from '../lib/model.ts';
 
 import type { TimeRecord, RecordFields, TimerDraft } from '../lib/types.ts';
 
@@ -19,12 +20,26 @@ const openOptions = () => browser.runtime.openOptionsPage();
 
 const store = useStore();
 const { records, active, now, error, syncError, ready, command, inSync } = store;
+const historyRecords = computed(() => {
+  if (props.options) {
+    return records.value;
+  }
+
+  const today = new Date(now.value);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+  const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1).getTime();
+
+  return records.value.filter((r) => r.start >= monthStart && r.start < nextMonthStart);
+});
 
 const mode = ref<'timer' | 'manual'>('timer');
 const drafts = ref<TimerDraft[]>([{ id: crypto.randomUUID(), title: '', billable: false }]);
 const editing = ref<TimeRecord | null>(null);
+const deleting = ref<TimeRecord | null>(null);
+const undo = ref<TimeRecord | null>(null);
 const notice = ref('');
 const busy = ref(false);
+const undoController = createUndo<TimeRecord>((r) => (undo.value = r));
 
 watch(active, (a) => {
   if (a.length === 0 && drafts.value.length === 0) {
@@ -48,7 +63,6 @@ async function start(d: TimerDraft) {
 
 async function manual(patch: RecordFields) {
   if (await command({ type: 'create', ...patch })) {
-    notice.value = 'Запись добавлена';
     mode.value = 'timer';
   }
 }
@@ -112,8 +126,33 @@ function rename(record: TimeRecord, event: Event) {
 }
 
 function addDraft() {
-  drafts.value.push({ id: crypto.randomUUID(), title: '', billable: false });
+  if (drafts.value.length === 0) {
+    drafts.value.push({ id: crypto.randomUUID(), title: '', billable: false });
+  }
 }
+
+function removeDraft(id: string) {
+  drafts.value = drafts.value.filter((d) => d.id !== id);
+}
+
+async function removeTimer() {
+  const r = deleting.value;
+
+  if (r && (await command({ type: 'delete', id: r.id }))) {
+    deleting.value = null;
+    undoController.offer(r);
+  }
+}
+
+async function restoreTimer() {
+  const r = undoController.peek();
+
+  if (r && (await command({ type: 'restore', id: r.id }))) {
+    undoController.clear();
+  }
+}
+
+onUnmounted(() => undoController.dispose());
 </script>
 
 <template>
@@ -190,7 +229,19 @@ function addDraft() {
         </div>
         <template v-if="mode === 'timer'">
           <div
-            v-for="r in active"
+            v-if="undo"
+            class="undo"
+            role="status"
+          >
+            Таймер отменён
+            <Button
+              label="Отменить"
+              size="small"
+              @click="restoreTimer"
+            />
+          </div>
+          <div
+            v-for="(r, index) in active"
             :key="r.id"
             class="timer-row"
           >
@@ -200,7 +251,7 @@ function addDraft() {
               aria-label="Название активной задачи"
               @change="rename(r, $event)"
             />
-            <b class="running">{{ formatDuration(now - r.start) }}</b>
+            <b class="running">{{ formatDuration(duration(r, now)) }}</b>
             <Button
               label="Stop"
               severity="danger"
@@ -214,23 +265,27 @@ function addDraft() {
               :aria-pressed="r.billable"
               @click="command({ type: 'edit', id: r.id, patch: { billable: !r.billable } })"
             />
-            <Button
-              label="✎"
-              severity="secondary"
-              aria-label="Редактировать активный таймер"
-              @click="editing = r"
-            />
-            <span
-              class="sync-marker"
-              :class="{ synced: inSync(r) }"
-              :title="
-                inSync(r)
-                  ? 'Сохранено в storage.sync, доставка на другие устройства не подтверждена'
-                  : 'Только локально или ожидает sync'
-              "
-            >
-              ● {{ inSync(r) ? 'В sync' : 'Только локально' }}
-            </span>
+            <div class="timer-actions">
+              <Button
+                label="✎"
+                severity="secondary"
+                aria-label="Редактировать активный таймер"
+                @click="editing = r"
+              />
+              <Button
+                v-if="index === active.length - 1 && drafts.length === 0"
+                label="+"
+                severity="secondary"
+                aria-label="Добавить строку таймера"
+                @click="addDraft"
+              />
+              <Button
+                label="×"
+                severity="secondary"
+                aria-label="Удалить активный таймер"
+                @click="deleting = r"
+              />
+            </div>
           </div>
           <form
             v-for="d in drafts"
@@ -260,12 +315,20 @@ function addDraft() {
               :aria-pressed="d.billable"
               @click="d.billable = !d.billable"
             />
+            <Button
+              v-if="active.length + drafts.length > 1"
+              type="button"
+              label="×"
+              severity="secondary"
+              aria-label="Скрыть новое поле таймера"
+              :disabled="busy"
+              @click="removeDraft(d.id)"
+            />
           </form>
           <Button
-            v-if="active.length"
-            label="+"
+            v-if="active.length === 0 && drafts.length === 0"
+            label="Добавить таймер"
             severity="secondary"
-            aria-label="Добавить строку таймера"
             @click="addDraft"
           />
         </template>
@@ -308,7 +371,7 @@ function addDraft() {
         </div>
       </section>
       <History
-        :records="records"
+        :records="historyRecords"
         :in-sync="inSync"
         :command="command"
       />
@@ -339,6 +402,30 @@ function addDraft() {
         @save="save"
         @cancel="editing = null"
       />
+    </Dialog>
+    <Dialog
+      :visible="!!deleting"
+      modal
+      header="Удалить активный таймер?"
+      :style="{ width: '380px', maxWidth: '95vw' }"
+      @update:visible="deleting = null"
+    >
+      <p>
+        «{{ deleting?.title }}» будет удалён без записи в историю. Отменить можно в течение 5
+        секунд.
+      </p>
+      <div class="actions">
+        <Button
+          label="Удалить"
+          severity="danger"
+          @click="removeTimer"
+        />
+        <Button
+          label="Назад"
+          severity="secondary"
+          @click="deleting = null"
+        />
+      </div>
     </Dialog>
   </main>
 </template>

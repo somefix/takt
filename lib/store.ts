@@ -29,6 +29,7 @@ export function useStore() {
         return;
       }
 
+      now.value = Date.now();
       records.value = Object.entries(local)
         .filter(([k]) => k.startsWith(PREFIX))
         .map(([, v]) => validateRecord(v));

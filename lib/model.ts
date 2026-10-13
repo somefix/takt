@@ -82,6 +82,8 @@ export function formatDuration(ms: number) {
   return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+export const formatDurationMinutes = (ms: number) => formatDuration(ms).slice(0, -3);
+
 export function localDate(ts: number) {
   const d = new Date(ts);
 
@@ -247,21 +249,45 @@ export function formTimes(
   active = false,
   mode: TimeMode = 'end',
   now = Date.now(),
+  original?: Pick<TimeRecord, 'start' | 'end'>,
 ): Pick<TimeRecord, 'start' | 'end'> {
-  const start = +new Date(`${form.date}T${form.start}`);
+  const minuteTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  if (!minuteTime.test(form.start) || (mode === 'end' && !active && !minuteTime.test(form.end))) {
+    throw new Error('Время: ЧЧ:ММ');
+  }
+
+  const start =
+    original &&
+    form.date === localDate(original.start) &&
+    form.start === localTime(original.start).slice(0, 5)
+      ? original.start
+      : +new Date(`${form.date}T${form.start}`);
   let end: number | null = null;
 
   if (!active) {
     if (mode === 'duration') {
-      if (!/^\d+:([0-5]\d):([0-5]\d)$/.test(form.duration)) {
-        throw new Error('Длительность: ЧЧ:ММ:СС');
+      if (!/^\d+:[0-5]\d$/.test(form.duration)) {
+        throw new Error('Длительность: ЧЧ:ММ');
       }
 
-      const [h, m, s] = form.duration.split(':').map(Number);
+      const [h, m] = form.duration.split(':').map(Number);
+      const originalDuration =
+        original?.end === null || !original ? null : original.end - original.start;
 
-      end = start + (h * 3600 + m * 60 + s) * 1000;
+      end =
+        start +
+        (originalDuration !== null && form.duration === formatDurationMinutes(originalDuration)
+          ? originalDuration
+          : (h * 60 + m) * 60000);
     } else {
-      end = +new Date(`${form.endDate}T${form.end}`);
+      end =
+        original?.end !== null &&
+        original?.end !== undefined &&
+        form.endDate === localDate(original.end) &&
+        form.end === localTime(original.end).slice(0, 5)
+          ? original.end
+          : +new Date(`${form.endDate}T${form.end}`);
     }
   }
 
