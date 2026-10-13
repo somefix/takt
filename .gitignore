@@ -1,0 +1,19 @@
+node_modules/
+.output/
+.wxt/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Local configuration and diagnostics
+.env
+.env.*
+!.env.example
+!.env.sample
+*.log
+
+# Test and TypeScript output
+coverage/
+*.tsbuildinfo
