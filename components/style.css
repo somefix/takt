@@ -131,9 +131,14 @@ button {
   color: #166d55;
 }
 .sync-marker {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
   color: #748079;
-  white-space: nowrap;
+}
+.sync-marker svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 .sync-marker.synced {
   color: #2671c7;
@@ -145,9 +150,20 @@ button {
   gap: 10px;
   margin-bottom: 16px;
 }
-.section-title span {
+.section-title > span {
   font-size: 11px;
   color: #79877f;
+}
+.month-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.month-navigation > span {
+  min-width: 110px;
+  text-align: center;
+  font-size: 13px;
+  color: #20322d;
 }
 h2 {
   font-size: 18px;
@@ -209,8 +225,19 @@ h4 {
   gap: 4px;
   flex-wrap: wrap;
 }
-.row-actions .p-button {
+.row-actions .p-button,
+.month-navigation .p-button {
+  width: 32px;
   padding: 5px 7px;
+}
+.month-navigation .p-button {
+  background: white;
+  border-color: #cbd6cf;
+  color: #20322d;
+}
+.month-navigation .p-button:disabled {
+  opacity: 1;
+  color: #8a9a90;
 }
 .duration {
   font-size: 12px;
@@ -336,5 +363,8 @@ footer {
   }
   .section-title {
     display: block;
+  }
+  .month-navigation {
+    margin-top: 12px;
   }
 }

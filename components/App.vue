@@ -20,16 +20,35 @@ const openOptions = () => browser.runtime.openOptionsPage();
 
 const store = useStore();
 const { records, active, now, error, syncError, ready, command, inSync } = store;
-const historyRecords = computed(() => {
-  if (props.options) {
-    return records.value;
-  }
+const monthOf = (timestamp: number) => {
+  const date = new Date(timestamp);
 
-  const today = new Date(now.value);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
-  const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1).getTime();
+  return date.getFullYear() * 12 + date.getMonth();
+};
+const currentMonth = computed(() => monthOf(now.value));
+const selectedMonth = ref(currentMonth.value);
+const completedMonths = computed(() =>
+  records.value.filter((r) => !r.deleted && r.end !== null).map((r) => monthOf(r.start)),
+);
+const firstMonth = computed(() =>
+  completedMonths.value.reduce((first, month) => Math.min(first, month), currentMonth.value),
+);
+const lastMonth = computed(() =>
+  completedMonths.value.reduce((last, month) => Math.max(last, month), currentMonth.value),
+);
+const historyRecords = computed(() => {
+  const month = props.options ? selectedMonth.value : currentMonth.value;
+  const year = Math.floor(month / 12);
+  const monthStart = new Date(year, month % 12, 1).getTime();
+  const nextMonthStart = new Date(year, (month % 12) + 1, 1).getTime();
 
   return records.value.filter((r) => r.start >= monthStart && r.start < nextMonthStart);
+});
+
+watch(currentMonth, (month, previousMonth) => {
+  if (selectedMonth.value === previousMonth) {
+    selectedMonth.value = month;
+  }
 });
 
 const mode = ref<'timer' | 'manual'>('timer');
@@ -374,11 +393,16 @@ onUnmounted(() => undoController.dispose());
         :records="historyRecords"
         :in-sync="inSync"
         :command="command"
+        :month="options ? selectedMonth : null"
+        :first-month="firstMonth"
+        :last-month="lastMonth"
+        @previous-month="selectedMonth--"
+        @next-month="selectedMonth++"
       />
       <footer>
         Без отдельного аккаунта · локальное хранение + Chrome sync
         <br />
-        «В sync» — сохранено в storage.sync; доставка на другие устройства не подтверждена.
+        Синее облако — сохранено в storage.sync; доставка на другие устройства не подтверждена.
       </footer>
     </template>
     <p

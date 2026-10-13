@@ -13,9 +13,23 @@ const props = defineProps<{
   records: TimeRecord[];
   inSync: (record: TimeRecord) => boolean;
   command: CommandHandler;
+  month: number | null;
+  firstMonth: number;
+  lastMonth: number;
 }>();
+defineEmits<{ 'previous-month': []; 'next-month': [] }>();
 
 const weeks = computed(() => groups(props.records));
+const monthLabel = computed(() => {
+  if (props.month === null) {
+    return '';
+  }
+
+  return new Date(Math.floor(props.month / 12), props.month % 12, 1).toLocaleDateString('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  });
+});
 const editing = ref<TimeRecord | null>(null);
 const deleting = ref<TimeRecord | null>(null);
 const undo = ref<TimeRecord | null>(null);
@@ -67,6 +81,28 @@ onUnmounted(() => undoController.dispose());
   <section class="history">
     <div class="section-title">
       <h2>История</h2>
+      <div
+        v-if="month !== null"
+        class="month-navigation"
+      >
+        <Button
+          label="‹"
+          severity="secondary"
+          size="small"
+          aria-label="Предыдущий месяц"
+          :disabled="month <= firstMonth"
+          @click="$emit('previous-month')"
+        />
+        <span aria-live="polite">{{ monthLabel }}</span>
+        <Button
+          label="›"
+          severity="secondary"
+          size="small"
+          aria-label="Следующий месяц"
+          :disabled="month >= lastMonth"
+          @click="$emit('next-month')"
+        />
+      </div>
     </div>
     <div
       v-if="undo"
@@ -84,7 +120,7 @@ onUnmounted(() => undoController.dispose());
       v-if="!weeks.length"
       class="empty"
     >
-      Пока нет завершённых записей.
+      За этот месяц нет завершённых записей.
       <br />
       <small>Запустите таймер или добавьте время вручную.</small>
     </div>
@@ -125,13 +161,36 @@ onUnmounted(() => undoController.dispose());
               <span
                 class="sync-marker"
                 :class="{ synced: inSync(r) }"
+                role="img"
+                :aria-label="inSync(r) ? 'В sync' : 'Только локально'"
                 :title="
                   inSync(r)
                     ? 'Успешно сохранено в storage.sync; доставка на другие устройства не подтверждена'
                     : 'Хранится только локально или ожидает сохранения в sync'
                 "
               >
-                ● {{ inSync(r) ? 'В sync' : 'Только локально' }}
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M19 18H6a4 4 0 0 1-.42-7.98 7 7 0 0 1 13.14-1.7A5 5 0 0 1 19 18Z"
+                    :fill="inSync(r) ? 'currentColor' : 'none'"
+                    :stroke="inSync(r) ? 'none' : 'currentColor'"
+                    stroke-width="1.8"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    v-if="inSync(r)"
+                    d="m9 13 2 2 4-4"
+                    fill="none"
+                    stroke="white"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
               </span>
             </div>
           </div>
