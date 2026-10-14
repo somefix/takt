@@ -87,6 +87,7 @@ onUnmounted(() => undoController.dispose());
       >
         <Button
           label="‹"
+          class="icon-button"
           severity="secondary"
           size="small"
           aria-label="Предыдущий месяц"
@@ -96,6 +97,7 @@ onUnmounted(() => undoController.dispose());
         <span aria-live="polite">{{ monthLabel }}</span>
         <Button
           label="›"
+          class="icon-button"
           severity="secondary"
           size="small"
           aria-label="Следующий месяц"
@@ -148,7 +150,20 @@ onUnmounted(() => undoController.dispose());
           class="history-row"
         >
           <div class="record-info">
-            <strong>{{ r.title }}</strong>
+            <div class="record-title">
+              <strong>{{ r.title }}</strong>
+              <a
+                v-if="r.url"
+                class="record-link"
+                :href="r.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="r.url"
+                :aria-label="`Открыть ссылку задачи: ${r.title}`"
+              >
+                ↗
+              </a>
+            </div>
             <div class="meta">
               <span>
                 {{ localTime(r.start) }} → {{ localTime(r.end!) }}
@@ -198,6 +213,7 @@ onUnmounted(() => undoController.dispose());
             <b class="duration">{{ formatDuration(r.end! - r.start) }}</b>
             <Button
               label="₽"
+              class="icon-button"
               :severity="r.billable ? 'success' : 'secondary'"
               :aria-label="
                 r.billable
@@ -206,28 +222,27 @@ onUnmounted(() => undoController.dispose());
               "
               :title="r.billable ? 'Оплачиваемое' : 'Неоплачиваемое'"
               :aria-pressed="r.billable"
-              size="small"
               @click="command({ type: 'edit', id: r.id, patch: { billable: !r.billable } })"
             />
             <Button
               label="▶"
+              class="icon-button"
               severity="secondary"
-              size="small"
               title="Запустить новый таймер"
               aria-label="Запустить новый таймер"
-              @click="command({ type: 'create', title: r.title, billable: r.billable })"
+              @click="command({ type: 'create', title: r.title, url: r.url, billable: r.billable })"
             />
             <Button
               label="✎"
+              class="icon-button"
               severity="secondary"
-              size="small"
               aria-label="Редактировать запись"
               @click="editing = r"
             />
             <Button
               label="×"
+              class="icon-button"
               severity="secondary"
-              size="small"
               aria-label="Удалить запись"
               @click="deleting = r"
             />

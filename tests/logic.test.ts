@@ -3,6 +3,7 @@ import { validateRecord } from '../lib/model.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEngine } from '../lib/engine.ts';
+import { jiraIssueFromUrl, titleWithJiraKey } from '../lib/jira.ts';
 import {
   duration,
   groups,
@@ -11,6 +12,7 @@ import {
   exportJSON,
   exportCSV,
   winner,
+  sameRecord,
   PREFIX,
 } from '../lib/model.ts';
 const record = (id: string, overrides: Partial<TimeRecord> = {}): TimeRecord => ({
@@ -88,11 +90,86 @@ test('parallel timers, restart, edits, stop and manual entry do not affect other
   assert.equal(m.getRecord('a').end, now);
   assert.equal(m.getRecord('b').end, null);
 });
+test('Jira issue URLs supply a key and a link without duplicating the key', () => {
+  assert.deepEqual(
+    jiraIssueFromUrl('https://team.atlassian.net/browse/abc-123?focusedCommentId=1'),
+    {
+      key: 'ABC-123',
+      url: 'https://team.atlassian.net/browse/abc-123',
+    },
+  );
+  assert.deepEqual(
+    jiraIssueFromUrl('https://team.atlassian.net/jira/software/projects/ABC/issues/ABC-123'),
+    {
+      key: 'ABC-123',
+      url: 'https://team.atlassian.net/jira/software/projects/ABC/issues/ABC-123',
+    },
+  );
+  assert.deepEqual(jiraIssueFromUrl('https://jira.example.org/browse/OPS-42'), {
+    key: 'OPS-42',
+    url: 'https://jira.example.org/browse/OPS-42',
+  });
+  assert.equal(jiraIssueFromUrl('https://example.org/issues/ABC-123'), null);
+  assert.equal(jiraIssueFromUrl('https://example.org/browse/ABC-123'), null);
+  assert.equal(
+    jiraIssueFromUrl('https://tracker.example.org/browse/ABC-123', 'ABC-123 - Jira')?.key,
+    'ABC-123',
+  );
+  assert.equal(jiraIssueFromUrl('chrome://settings'), null);
+  assert.equal(titleWithJiraKey('Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');
+  assert.equal(titleWithJiraKey('ABC-123 Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');
+  assert.equal(titleWithJiraKey('', 'ABC-123'), 'ABC-123');
+});
+test('record link survives edits, JSON export, CSV export and sync', async () => {
+  const m = mock();
+  let now = 1000000;
+  const e = createEngine(m.api, () => now);
+  const url = 'https://team.atlassian.net/browse/ABC-123';
+  await e.command({ type: 'create', id: 'jira', title: 'ABC-123', url });
+  assert.equal(m.getRecord('jira').url, url);
+  await e.command({ type: 'edit', id: 'jira', patch: { title: 'ABC-123 Исправить вход' } });
+  assert.equal(m.getRecord('jira').url, url);
+  assert.equal(parseImport(exportJSON([m.getRecord('jira')]))[0].url, url);
+  await e.command({ type: 'stop', id: 'jira' });
+  assert.ok(exportCSV([m.getRecord('jira')]).includes(url));
+  await e.command({ type: 'edit', id: 'jira', patch: { url: '' } });
+  assert.equal(m.getRecord('jira').url, undefined);
+  await assert.rejects(
+    e.command({ type: 'edit', id: 'jira', patch: { url: 'javascript:alert(1)' } }),
+    /Некорректная запись/,
+  );
+  now += 20000;
+  await e.reconcile();
+  assert.equal(validateRecord(m.sync['record:jira']).url, undefined);
+});
+test('an unnamed timer can start but cannot stop until it is named', async () => {
+  const m = mock();
+  const e = createEngine(m.api, () => 1000000);
+
+  await e.command({ type: 'create', id: 'empty', title: '  \t  ' });
+  assert.equal(m.getRecord('empty').title, '');
+  assert.equal(m.getRecord('empty').end, null);
+  await assert.rejects(e.command({ type: 'stop', id: 'empty' }), /Введите название/);
+  assert.equal(m.getRecord('empty').end, null);
+  await e.command({ type: 'edit', id: 'empty', patch: { title: '  Новая задача  ' } });
+  assert.equal(m.getRecord('empty').title, 'Новая задача');
+  await e.command({ type: 'stop', id: 'empty' });
+  assert.equal(m.getRecord('empty').end, 1000000);
+  await e.command({ type: 'create', id: 'named', title: '  Задача  ' });
+  assert.equal(m.getRecord('named').title, 'Задача');
+  await e.command({ type: 'edit', id: 'named', patch: { title: '  ' } });
+  assert.equal(m.getRecord('named').title, '');
+  await assert.rejects(e.command({ type: 'stop', id: 'named' }), /Введите название/);
+  await assert.rejects(
+    e.command({ type: 'create', id: 'manual-blank', title: '', start: 10, end: 20 }),
+    /Введите название/,
+  );
+});
 test('delete tombstone, undo, remote merge and no resurrection', async () => {
   const m = mock();
   let now = 1000000;
   const e = createEngine(m.api, () => now);
-  await e.command({ type: 'create', id: 'a' });
+  await e.command({ type: 'create', id: 'a', title: 'A' });
   const old = structuredClone(m.getRecord('a'));
   await e.command({ type: 'delete', id: 'a' });
   assert.equal(m.getRecord('a').deleted, true);
@@ -170,7 +247,7 @@ test('sync failure keeps local data, reports error and retries; rate limited wri
   let now = 1000000;
   const e = createEngine(m.api, () => now);
   m.setFail(true);
-  await e.command({ type: 'create', id: 'a' });
+  await e.command({ type: 'create', id: 'a', title: 'A' });
   assert.ok(m.getRecord('a'));
   assert.match(String(m.local.syncError), /QUOTA_BYTES/);
   assert.ok(m.alarms.length);
@@ -185,6 +262,25 @@ test('sync failure keeps local data, reports error and retries; rate limited wri
   now += 20000;
   await e.reconcile();
   assert.equal(validateRecord(m.sync['record:a']).title, 'Edited');
+});
+test('sync status and reconciliation ignore storage object property order', async () => {
+  const m = mock();
+  const r = record('a');
+  m.local[PREFIX + r.id] = r;
+  m.sync[PREFIX + r.id] = {
+    deleted: false,
+    updatedAt: r.updatedAt,
+    billable: r.billable,
+    end: r.end,
+    start: r.start,
+    title: r.title,
+    id: r.id,
+  };
+  assert.equal(sameRecord(m.sync[PREFIX + r.id], r), true);
+  assert.equal(sameRecord({ ...r, updatedAt: r.updatedAt + 1 }, r), false);
+  const e = createEngine(m.api, () => 1000000);
+  await e.reconcile();
+  assert.equal(m.writes.filter((area) => area === 'sync').length, 0);
 });
 test('removing a record from sync window retains local history', async () => {
   const m = mock();

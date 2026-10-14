@@ -17,6 +17,7 @@ const end = r?.end ?? start + 3600000;
 
 const form = reactive({
   title: r?.title || '',
+  url: r?.url || '',
   date: localDate(start),
   start: localTime(start).slice(0, 5),
   endDate: localDate(end),
@@ -30,9 +31,15 @@ const error = ref('');
 
 function submit() {
   try {
+    const title = form.title.trim();
+
+    if (!title && !props.active) {
+      throw new Error('Введите название задачи');
+    }
+
     const times = formTimes(form, props.active, mode.value, Date.now(), r);
 
-    emit('save', { title: form.title.trim() || 'Без названия', ...times, billable: form.billable });
+    emit('save', { title, url: form.url.trim(), ...times, billable: form.billable });
   } catch (e) {
     error.value = errorMessage(e);
   }
@@ -50,6 +57,16 @@ function submit() {
         v-model="form.title"
         maxlength="2000"
         placeholder="Над чем работали?"
+        :required="!active"
+      />
+    </label>
+    <label>
+      Ссылка на задачу
+      <InputText
+        v-model="form.url"
+        type="url"
+        maxlength="2048"
+        placeholder="https://…"
       />
     </label>
     <div class="fields">

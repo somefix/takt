@@ -1,6 +1,6 @@
 import type { EngineAPI, Command, StorageData, TimeRecord } from './types.ts';
 import { errorMessage } from './types.ts';
-import { PREFIX, validateRecord, winner, planSync } from './model.ts';
+import { PREFIX, validateRecord, winner, planSync, sameRecord } from './model.ts';
 
 export function createEngine(api: EngineAPI, now = () => Date.now()) {
   let queue = Promise.resolve();
@@ -38,7 +38,7 @@ export function createEngine(api: EngineAPI, now = () => Date.now()) {
 
         const next = winner(local[k] === undefined ? undefined : validateRecord(local[k]), r);
 
-        if (JSON.stringify(local[k]) !== JSON.stringify(next)) {
+        if (!sameRecord(local[k], next)) {
           changes[k] = next;
         }
       } catch {}
@@ -77,7 +77,7 @@ export function createEngine(api: EngineAPI, now = () => Date.now()) {
       const changes: StorageData = {};
 
       for (const [k, v] of Object.entries(plan.values)) {
-        if (JSON.stringify(remote[k]) !== JSON.stringify(v)) {
+        if (!sameRecord(remote[k], v)) {
           changes[k] = v;
         }
       }
@@ -135,9 +135,16 @@ export function createEngine(api: EngineAPI, now = () => Date.now()) {
           const old = data[key] === undefined ? undefined : validateRecord(data[key]);
 
           if (command.type === 'create') {
+            const title = typeof command.title === 'string' ? command.title.trim() : '';
+
+            if (!title && command.end != null) {
+              throw new Error('Введите название задачи');
+            }
+
             changes[key] = validateRecord({
               id,
-              title: command.title || 'Без названия',
+              title,
+              url: command.url,
               billable: !!command.billable,
               start: command.start ?? now(),
               end: command.end ?? null,
@@ -156,9 +163,31 @@ export function createEngine(api: EngineAPI, now = () => Date.now()) {
             } else if (command.type === 'restore') {
               changes[key] = { ...old, deleted: false, updatedAt };
             } else if (command.type === 'stop') {
+              if (!old.title.trim()) {
+                throw new Error('Введите название задачи');
+              }
+
               changes[key] = { ...old, end: Math.max(now(), old.start), updatedAt };
             } else if (command.type === 'edit') {
-              changes[key] = validateRecord({ ...old, ...command.patch, id, updatedAt });
+              const title = command.patch.title;
+
+              if (title !== undefined && typeof title !== 'string') {
+                throw new Error('Введите название задачи');
+              }
+
+              const next = validateRecord({
+                ...old,
+                ...command.patch,
+                title: title === undefined ? old.title : title.trim(),
+                id,
+                updatedAt,
+              });
+
+              if (next.end !== null && !next.title) {
+                throw new Error('Введите название задачи');
+              }
+
+              changes[key] = next;
             } else {
               throw new Error('Неизвестная команда');
             }

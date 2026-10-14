@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 import { errorMessage } from './types.ts';
-import { PREFIX, validateRecord } from './model.ts';
+import { PREFIX, sameRecord, validateRecord } from './model.ts';
 
 import type { TimeRecord, StorageData, Command, CommandResponse } from './types.ts';
 
@@ -84,6 +84,6 @@ export function useStore() {
     active: computed(() =>
       records.value.filter((r) => !r.deleted && r.end === null).sort((a, b) => a.start - b.start),
     ),
-    inSync: (r: TimeRecord) => JSON.stringify(remote.value[PREFIX + r.id]) === JSON.stringify(r),
+    inSync: (r: TimeRecord) => sameRecord(remote.value[PREFIX + r.id], r),
   };
 }

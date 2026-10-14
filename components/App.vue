@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { browser } from 'wxt/browser';
-import { computed, ref, watch, onUnmounted } from 'vue';
+import { computed, reactive, ref, watch, onUnmounted } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Dialog from 'primevue/dialog';
@@ -11,8 +11,9 @@ import History from './History.vue';
 import { useStore } from '../lib/store.ts';
 import { createUndo } from '../lib/undo.ts';
 import { duration, formatDuration, parseImport, exportJSON, exportCSV } from '../lib/model.ts';
+import { jiraIssueFromUrl, titleWithJiraKey } from '../lib/jira.ts';
 
-import type { TimeRecord, RecordFields, TimerDraft } from '../lib/types.ts';
+import type { TimeRecord, RecordFields, TimerDraft, Command } from '../lib/types.ts';
 
 const props = defineProps<{ options?: boolean }>();
 
@@ -52,7 +53,8 @@ watch(currentMonth, (month, previousMonth) => {
 });
 
 const mode = ref<'timer' | 'manual'>('timer');
-const drafts = ref<TimerDraft[]>([{ id: crypto.randomUUID(), title: '', billable: false }]);
+const drafts = ref<TimerDraft[]>([]);
+const activeTitles = reactive<Record<string, string>>({});
 const editing = ref<TimeRecord | null>(null);
 const deleting = ref<TimeRecord | null>(null);
 const undo = ref<TimeRecord | null>(null);
@@ -61,7 +63,13 @@ const busy = ref(false);
 const undoController = createUndo<TimeRecord>((r) => (undo.value = r));
 
 watch(active, (a) => {
-  if (a.length === 0 && drafts.value.length === 0) {
+  if (ready.value && a.length === 0 && drafts.value.length === 0) {
+    drafts.value = [{ id: crypto.randomUUID(), title: '', billable: false }];
+  }
+});
+
+watch(ready, (isReady) => {
+  if (isReady && active.value.length === 0 && drafts.value.length === 0) {
     drafts.value = [{ id: crypto.randomUUID(), title: '', billable: false }];
   }
 });
@@ -73,11 +81,33 @@ async function start(d: TimerDraft) {
 
   busy.value = true;
 
-  if (await command({ type: 'create', title: d.title, billable: d.billable })) {
+  let issue = null;
+
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    issue = jiraIssueFromUrl(tab?.url, tab?.title);
+  } catch {
+    // A tab URL may be unavailable when started from the options page.
+  }
+
+  const title = issue ? titleWithJiraKey(d.title, issue.key) : d.title.trim();
+
+  if (await command({ type: 'create', title, url: issue?.url, billable: d.billable })) {
     drafts.value = drafts.value.filter((x) => x.id !== d.id);
   }
 
   busy.value = false;
+}
+
+async function historyCommand(action: Command) {
+  const success = await command(action);
+
+  if (success && action.type === 'create') {
+    drafts.value = [];
+    mode.value = 'timer';
+  }
+
+  return success;
 }
 
 async function manual(patch: RecordFields) {
@@ -134,14 +164,36 @@ async function importFile(event: Event) {
   input.value = '';
 }
 
-function rename(record: TimeRecord, event: Event) {
-  const input = event.target as HTMLInputElement;
+const titleFor = (record: TimeRecord) => activeTitles[record.id] ?? record.title;
 
-  void command({
-    type: 'edit',
-    id: record.id,
-    patch: { title: input.value.trim() || 'Без названия' },
-  });
+async function rename(record: TimeRecord) {
+  const title = titleFor(record).trim();
+
+  if (
+    title === record.title ||
+    (await command({ type: 'edit', id: record.id, patch: { title } }))
+  ) {
+    if (activeTitles[record.id]?.trim() === title) {
+      delete activeTitles[record.id];
+    }
+  }
+}
+
+async function stop(record: TimeRecord) {
+  const title = titleFor(record).trim();
+
+  if (!title) {
+    return;
+  }
+
+  if (
+    title !== record.title &&
+    !(await command({ type: 'edit', id: record.id, patch: { title } }))
+  ) {
+    return;
+  }
+
+  await command({ type: 'stop', id: record.id });
 }
 
 function addDraft() {
@@ -178,7 +230,11 @@ onUnmounted(() => undoController.dispose());
   <main :class="['app', { options }]">
     <header class="app-header">
       <div>
-        <span class="logo">т</span>
+        <img
+          class="logo"
+          src="/icon/128.png"
+          alt=""
+        />
         <span class="brand">такт</span>
         <span class="tagline">Время под контролем</span>
       </div>
@@ -227,7 +283,7 @@ onUnmounted(() => undoController.dispose());
         @click="notice = ''"
         aria-label="Закрыть уведомление"
       >
-        ×
+        <span class="button-symbol">×</span>
       </button>
     </p>
     <template v-if="ready">
@@ -265,19 +321,34 @@ onUnmounted(() => undoController.dispose());
             class="timer-row"
           >
             <InputText
-              :model-value="r.title"
+              :model-value="titleFor(r)"
               maxlength="2000"
+              placeholder="Над чем работаете?"
               aria-label="Название активной задачи"
-              @change="rename(r, $event)"
+              @update:model-value="activeTitles[r.id] = String($event)"
+              @blur="rename(r)"
             />
+            <a
+              v-if="r.url"
+              class="record-link"
+              :href="r.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="r.url"
+              :aria-label="`Открыть ссылку задачи: ${r.title}`"
+            >
+              ↗
+            </a>
             <b class="running">{{ formatDuration(duration(r, now)) }}</b>
             <Button
               label="Stop"
               severity="danger"
-              @click="command({ type: 'stop', id: r.id })"
+              :disabled="!titleFor(r).trim()"
+              @click="stop(r)"
             />
             <Button
               label="₽"
+              class="icon-button"
               :severity="r.billable ? 'success' : 'secondary'"
               :title="r.billable ? 'Оплачиваемое' : 'Неоплачиваемое'"
               :aria-label="r.billable ? 'Оплачиваемое: изменить' : 'Неоплачиваемое: изменить'"
@@ -287,6 +358,7 @@ onUnmounted(() => undoController.dispose());
             <div class="timer-actions">
               <Button
                 label="✎"
+                class="icon-button"
                 severity="secondary"
                 aria-label="Редактировать активный таймер"
                 @click="editing = r"
@@ -294,12 +366,14 @@ onUnmounted(() => undoController.dispose());
               <Button
                 v-if="index === active.length - 1 && drafts.length === 0"
                 label="+"
+                class="icon-button"
                 severity="secondary"
                 aria-label="Добавить строку таймера"
                 @click="addDraft"
               />
               <Button
                 label="×"
+                class="icon-button"
                 severity="secondary"
                 aria-label="Удалить активный таймер"
                 @click="deleting = r"
@@ -327,6 +401,7 @@ onUnmounted(() => undoController.dispose());
             </div>
             <Button
               label="₽"
+              class="icon-button"
               :severity="d.billable ? 'success' : 'secondary'"
               type="button"
               :aria-label="d.billable ? 'Оплачиваемое: изменить' : 'Неоплачиваемое: изменить'"
@@ -338,6 +413,7 @@ onUnmounted(() => undoController.dispose());
               v-if="active.length + drafts.length > 1"
               type="button"
               label="×"
+              class="icon-button"
               severity="secondary"
               aria-label="Скрыть новое поле таймера"
               :disabled="busy"
@@ -392,7 +468,7 @@ onUnmounted(() => undoController.dispose());
       <History
         :records="historyRecords"
         :in-sync="inSync"
-        :command="command"
+        :command="historyCommand"
         :month="options ? selectedMonth : null"
         :first-month="firstMonth"
         :last-month="lastMonth"

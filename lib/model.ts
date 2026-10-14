@@ -11,6 +11,17 @@ import type {
 
 export const PREFIX = 'record:';
 
+export function validRecordUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !!url.hostname;
+  } catch {
+    return false;
+  }
+}
+
 export function validateRecord(value: unknown): TimeRecord {
   if (!value || typeof value !== 'object') {
     throw new Error('Некорректная запись в JSON');
@@ -24,6 +35,7 @@ export function validateRecord(value: unknown): TimeRecord {
     !/^[a-zA-Z0-9_-]{1,100}$/.test(r.id) ||
     typeof r.title !== 'string' ||
     r.title.length > 2000 ||
+    (r.url !== undefined && r.url !== '' && !validRecordUrl(r.url)) ||
     typeof r.billable !== 'boolean' ||
     typeof r.start !== 'number' ||
     !Number.isSafeInteger(r.start) ||
@@ -45,12 +57,21 @@ export function validateRecord(value: unknown): TimeRecord {
   return {
     id: r.id,
     title: r.title,
+    ...(r.url ? { url: r.url as string } : {}),
     start: r.start,
     end: r.end,
     billable: r.billable,
     updatedAt: r.updatedAt,
     deleted: !!r.deleted,
   };
+}
+
+export function sameRecord(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(validateRecord(a)) === JSON.stringify(validateRecord(b));
+  } catch {
+    return false;
+  }
 }
 
 export function winner(a: TimeRecord | undefined, b: TimeRecord): TimeRecord {
@@ -227,12 +248,13 @@ export function exportCSV(records: TimeRecord[]) {
   return (
     '\uFEFF' +
     [
-      ['ID', 'Название', 'Начало', 'Окончание', 'Длительность (сек)', 'Оплачиваемое'],
+      ['ID', 'Название', 'Ссылка', 'Начало', 'Окончание', 'Длительность (сек)', 'Оплачиваемое'],
       ...records
         .filter((r) => !r.deleted && r.end !== null)
         .map((r) => [
           r.id,
           /^[=+@-]/.test(r.title) ? "'" + r.title : r.title,
+          r.url ?? '',
           new Date(r.start).toISOString(),
           new Date(r.end!).toISOString(),
           duration(r) / 1000,

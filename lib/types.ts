@@ -1,6 +1,7 @@
 export interface TimeRecord {
   id: string;
   title: string;
+  url?: string;
   start: number;
   end: number | null;
   billable: boolean;
@@ -8,7 +9,7 @@ export interface TimeRecord {
   deleted: boolean;
 }
 
-export type RecordFields = Pick<TimeRecord, 'title' | 'start' | 'end' | 'billable'>;
+export type RecordFields = Pick<TimeRecord, 'title' | 'start' | 'end' | 'billable' | 'url'>;
 
 export type RecordPatch = Partial<RecordFields>;
 
