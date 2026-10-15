@@ -476,9 +476,17 @@ onUnmounted(() => undoController.dispose());
         @next-month="selectedMonth++"
       />
       <footer>
-        Без отдельного аккаунта · локальное хранение + Chrome sync
+        Записи хранятся на этом устройстве.
         <br />
-        Синее облако — сохранено в storage.sync; доставка на другие устройства не подтверждена.
+        Синее облако означает, что запись также сохранена для синхронизации Chrome.
+        <br />
+        <a
+          href="/privacy.html"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Политика конфиденциальности
+        </a>
       </footer>
     </template>
     <p
