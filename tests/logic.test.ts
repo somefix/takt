@@ -3,7 +3,7 @@ import { validateRecord } from '../lib/model.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEngine } from '../lib/engine.ts';
-import { jiraIssueFromUrl, titleWithJiraKey } from '../lib/jira.ts';
+import { jiraIssueFromUrl, jiraRecordLabel, titleWithJiraKey } from '../lib/jira.ts';
 import {
   duration,
   groups,
@@ -136,10 +136,44 @@ test('Jira issue URLs supply a key and a link without duplicating the key', () =
     jiraIssueFromUrl('https://team.atlassian.net/browse/ABC-123', 'Другая вкладка')?.summary,
     undefined,
   );
+  assert.deepEqual(
+    jiraIssueFromUrl(
+      'https://jira.b2b-center.ru/browse/CENTER-207488',
+      '[CENTER-207488]\nАдминистративная работа 2026',
+    ),
+    {
+      key: 'CENTER-207488',
+      url: 'https://jira.b2b-center.ru/browse/CENTER-207488',
+      summary: 'Административная работа 2026',
+    },
+  );
+  assert.equal(
+    jiraIssueFromUrl(
+      'https://jira.b2b-center.ru/browse/CENTER-207488',
+      '[CENTER-207488] - Административная работа 2026 - Jira',
+    )?.summary,
+    'Административная работа 2026',
+  );
   assert.equal(jiraIssueFromUrl('chrome://settings'), null);
   assert.equal(titleWithJiraKey('Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');
   assert.equal(titleWithJiraKey('ABC-123 Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');
   assert.equal(titleWithJiraKey('', 'ABC-123'), 'ABC-123');
+});
+test('Jira record labels show the task name separately from its key', () => {
+  const url = 'https://jira.b2b-center.ru/browse/CENTER-207488';
+  assert.deepEqual(jiraRecordLabel('CENTER-207488 Административная работа 2026', url), {
+    name: 'Административная работа 2026',
+    key: 'CENTER-207488',
+  });
+  assert.deepEqual(jiraRecordLabel('[CENTER-207488] - Административная работа 2026', url), {
+    name: 'Административная работа 2026',
+    key: 'CENTER-207488',
+  });
+  assert.deepEqual(jiraRecordLabel('Обычная задача'), { name: 'Обычная задача' });
+  assert.deepEqual(jiraRecordLabel('CENTER-207488', url), {
+    name: 'CENTER-207488',
+    key: 'CENTER-207488',
+  });
 });
 test('record link survives edits, JSON export, CSV export and sync', async () => {
   const m = mock();

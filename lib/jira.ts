@@ -9,8 +9,8 @@ function issueSummaryFromTabTitle(tabTitle: string, key: string): string | undef
     .trim()
     .replace(/\s*[-–—|]\s*Jira\s*$/i, '')
     .trim();
-  const atStart = title.match(new RegExp(`^${key}(?:\\s*[-–—:|]\\s*|\\s+)(.+)$`, 'i'));
-  const atEnd = title.match(new RegExp(`^(.+?)(?:\\s*[-–—:|]\\s*|\\s+)${key}$`, 'i'));
+  const atStart = title.match(new RegExp(`^\\[?${key}\\]?(?:\\s*[-–—:|]\\s*|\\s+)(.+)$`, 'is'));
+  const atEnd = title.match(new RegExp(`^(.+?)(?:\\s*[-–—:|]\\s*|\\s+)\\[?${key}\\]?$`, 'is'));
   const summary = (atStart?.[1] ?? atEnd?.[1])?.trim();
 
   return summary || undefined;
@@ -44,4 +44,17 @@ export function titleWithJiraKey(title: string, key: string): string {
   return new RegExp(`(^|\\W)${key}(\\W|$)`, 'i').test(trimmed)
     ? trimmed
     : `${key}${trimmed ? ` ${trimmed}` : ''}`.slice(0, 2000);
+}
+
+export function jiraRecordLabel(title: string, url?: string): { name: string; key?: string } {
+  const key = jiraIssueFromUrl(url)?.key;
+  if (!key) return { name: title };
+  if (new RegExp(`^\\[?${key}\\]?$`, 'i').test(title.trim())) return { name: key, key };
+
+  const name = title
+    .replace(new RegExp(`^\\[?${key}\\]?(?:\\s*[-–—:|]\\s*|\\s+)`, 'i'), '')
+    .replace(new RegExp(`(?:\\s*[-–—:|]\\s*|\\s+)\\[?${key}\\]?$`, 'i'), '')
+    .trim();
+
+  return { name: name || key, key };
 }

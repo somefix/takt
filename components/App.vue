@@ -11,7 +11,7 @@ import History from './History.vue';
 import { useStore } from '../lib/store.ts';
 import { createUndo } from '../lib/undo.ts';
 import { duration, formatDuration, parseImport, exportJSON, exportCSV } from '../lib/model.ts';
-import { jiraIssueFromUrl, titleWithJiraKey } from '../lib/jira.ts';
+import { jiraIssueFromUrl, jiraRecordLabel, titleWithJiraKey } from '../lib/jira.ts';
 
 import type { TimeRecord, RecordFields, TimerDraft, Command } from '../lib/types.ts';
 
@@ -167,22 +167,33 @@ async function importFile(event: Event) {
 }
 
 const titleFor = (record: TimeRecord) => activeTitles[record.id] ?? record.title;
+const labelFor = (record: TimeRecord) => {
+  const label = jiraRecordLabel(titleFor(record), record.url);
+  return activeTitles[record.id] === '' ? { ...label, name: '' } : label;
+};
+
+function editedTitle(record: TimeRecord): string {
+  const title = titleFor(record).trim();
+  const key = jiraIssueFromUrl(record.url)?.key;
+  return key && activeTitles[record.id] !== undefined ? titleWithJiraKey(title, key) : title;
+}
 
 async function rename(record: TimeRecord) {
-  const title = titleFor(record).trim();
+  const draft = activeTitles[record.id];
+  const title = editedTitle(record);
 
   if (
     title === record.title ||
     (await command({ type: 'edit', id: record.id, patch: { title } }))
   ) {
-    if (activeTitles[record.id]?.trim() === title) {
+    if (activeTitles[record.id] === draft) {
       delete activeTitles[record.id];
     }
   }
 }
 
 async function stop(record: TimeRecord) {
-  const title = titleFor(record).trim();
+  const title = editedTitle(record);
 
   if (!title) {
     return;
@@ -321,15 +332,25 @@ onUnmounted(() => undoController.dispose());
             v-for="(r, index) in active"
             :key="r.id"
             class="timer-row"
+            :class="{ 'has-issue-key': !!labelFor(r).key }"
           >
-            <InputText
-              :model-value="titleFor(r)"
-              maxlength="2000"
-              placeholder="Над чем работаете?"
-              aria-label="Название активной задачи"
-              @update:model-value="activeTitles[r.id] = String($event)"
-              @blur="rename(r)"
-            />
+            <div class="timer-name">
+              <InputText
+                :model-value="labelFor(r).name"
+                :title="labelFor(r).name"
+                maxlength="2000"
+                placeholder="Над чем работаете?"
+                aria-label="Название активной задачи"
+                @update:model-value="activeTitles[r.id] = String($event)"
+                @blur="rename(r)"
+              />
+              <span
+                v-if="labelFor(r).key"
+                class="issue-key"
+              >
+                {{ labelFor(r).key }}
+              </span>
+            </div>
             <a
               v-if="r.url"
               class="record-link"

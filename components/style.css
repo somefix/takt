@@ -102,9 +102,33 @@ button {
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
-.timer-row > .p-inputtext {
+.timer-row.has-issue-key {
+  align-items: flex-start;
+}
+.timer-row.has-issue-key > .record-link,
+.timer-row.has-issue-key > .running {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+}
+.timer-name {
   flex: 1;
   min-width: 120px;
+}
+.timer-name .p-inputtext {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.issue-key {
+  display: block;
+  margin-top: 3px;
+  color: #7a867f;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .timer-actions {
   display: flex;
@@ -212,9 +236,13 @@ h4 {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 .record-title > strong {
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
 }
 .record-link {

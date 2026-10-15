@@ -6,6 +6,7 @@ import Dialog from 'primevue/dialog';
 import RecordForm from './RecordForm.vue';
 import { createUndo } from '../lib/undo.ts';
 import { groups, formatDuration, localTime } from '../lib/model.ts';
+import { jiraRecordLabel } from '../lib/jira.ts';
 
 import type { TimeRecord, RecordFields, CommandHandler } from '../lib/types.ts';
 
@@ -151,7 +152,9 @@ onUnmounted(() => undoController.dispose());
         >
           <div class="record-info">
             <div class="record-title">
-              <strong>{{ r.title }}</strong>
+              <strong :title="jiraRecordLabel(r.title, r.url).name">
+                {{ jiraRecordLabel(r.title, r.url).name || 'Название не указано' }}
+              </strong>
               <a
                 v-if="r.url"
                 class="record-link"
@@ -164,6 +167,12 @@ onUnmounted(() => undoController.dispose());
                 ↗
               </a>
             </div>
+            <span
+              v-if="jiraRecordLabel(r.title, r.url).key"
+              class="issue-key"
+            >
+              {{ jiraRecordLabel(r.title, r.url).key }}
+            </span>
             <div class="meta">
               <span>
                 {{ localTime(r.start) }} → {{ localTime(r.end!) }}
