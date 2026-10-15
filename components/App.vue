@@ -90,7 +90,9 @@ async function start(d: TimerDraft) {
     // A tab URL may be unavailable when started from the options page.
   }
 
-  const title = issue ? titleWithJiraKey(d.title, issue.key) : d.title.trim();
+  const title = issue
+    ? titleWithJiraKey(d.title.trim() || issue.summary || '', issue.key)
+    : d.title.trim();
 
   if (await command({ type: 'create', title, url: issue?.url, billable: d.billable })) {
     drafts.value = drafts.value.filter((x) => x.id !== d.id);

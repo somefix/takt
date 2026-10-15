@@ -115,6 +115,27 @@ test('Jira issue URLs supply a key and a link without duplicating the key', () =
     jiraIssueFromUrl('https://tracker.example.org/browse/ABC-123', 'ABC-123 - Jira')?.key,
     'ABC-123',
   );
+  assert.deepEqual(
+    jiraIssueFromUrl('https://team.atlassian.net/browse/ABC-123', 'ABC-123 Исправить вход - Jira'),
+    {
+      key: 'ABC-123',
+      url: 'https://team.atlassian.net/browse/ABC-123',
+      summary: 'Исправить вход',
+    },
+  );
+  assert.equal(
+    jiraIssueFromUrl('https://team.atlassian.net/browse/ABC-123', 'Исправить вход - ABC-123 - Jira')
+      ?.summary,
+    'Исправить вход',
+  );
+  assert.equal(
+    jiraIssueFromUrl('https://team.atlassian.net/browse/ABC-123', 'ABC-123 - Jira')?.summary,
+    undefined,
+  );
+  assert.equal(
+    jiraIssueFromUrl('https://team.atlassian.net/browse/ABC-123', 'Другая вкладка')?.summary,
+    undefined,
+  );
   assert.equal(jiraIssueFromUrl('chrome://settings'), null);
   assert.equal(titleWithJiraKey('Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');
   assert.equal(titleWithJiraKey('ABC-123 Исправить вход', 'ABC-123'), 'ABC-123 Исправить вход');

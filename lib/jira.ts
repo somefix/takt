@@ -1,6 +1,19 @@
 export interface JiraIssue {
   key: string;
   url: string;
+  summary?: string;
+}
+
+function issueSummaryFromTabTitle(tabTitle: string, key: string): string | undefined {
+  const title = tabTitle
+    .trim()
+    .replace(/\s*[-–—|]\s*Jira\s*$/i, '')
+    .trim();
+  const atStart = title.match(new RegExp(`^${key}(?:\\s*[-–—:|]\\s*|\\s+)(.+)$`, 'i'));
+  const atEnd = title.match(new RegExp(`^(.+?)(?:\\s*[-–—:|]\\s*|\\s+)${key}$`, 'i'));
+  const summary = (atStart?.[1] ?? atEnd?.[1])?.trim();
+
+  return summary || undefined;
 }
 
 export function jiraIssueFromUrl(value: string | undefined, tabTitle = ''): JiraIssue | null {
@@ -17,7 +30,10 @@ export function jiraIssueFromUrl(value: string | undefined, tabTitle = ''): Jira
       url.hostname.endsWith('.atlassian.net') || /(^|[.-])jira([.-]|$)/i.test(url.hostname);
     if (!isJiraHost && !/\bjira\b/i.test(tabTitle)) return null;
 
-    return { key: match[1].toUpperCase(), url: url.origin + url.pathname };
+    const key = match[1].toUpperCase();
+    const summary = issueSummaryFromTabTitle(tabTitle, key);
+
+    return { key, url: url.origin + url.pathname, ...(summary ? { summary } : {}) };
   } catch {
     return null;
   }
